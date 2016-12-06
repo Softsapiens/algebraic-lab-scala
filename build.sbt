@@ -1,13 +1,15 @@
 name := "algelab"
 
-scalaVersion in ThisBuild := "2.12.0-RC2"
+scalaVersion in ThisBuild := "2.12.0"
 
-addCompilerPlugin("org.spire-math" %% "kind-projector" % "0.9.2")
+addCompilerPlugin("org.spire-math" %% "kind-projector" % "0.9.3")
+addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full)
+
 
 import sbt._
 
 libraryDependencies ++= Seq(
-  "org.typelevel" %% "cats" % "0.8.0"
+  "org.typelevel" %% "cats" % "0.8.1"
   , "org.scalaz" %% "scalaz-core" % "7.3.0-M6"
   , "org.scalatest" %% "scalatest" % "3.0.0" % Test
   , "com.lihaoyi" %% "sourcecode" % "0.1.3"
