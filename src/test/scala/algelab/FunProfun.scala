@@ -27,11 +27,11 @@ class FunProfun extends FlatSpec with Matchers {
         dimap[A, Y, A, B](identity, g)(p)
     }
 
-    trait Strong[~>[_, _]] extends Profunctor[~>]  {
+    trait Strong[~>[_, _]] extends Profunctor[~>] {
       def first[X, A, B](p: A ~> B): (X, A) ~> (X, B)
     }
 
-    trait Choice[~>[_, _]] extends Profunctor[~>]  {
+    trait Choice[~>[_, _]] extends Profunctor[~>] {
       def left[X, A, B](p: A ~> B): Either[X, A] ~> Either[X, B]
     }
 
@@ -51,6 +51,28 @@ class FunProfun extends FlatSpec with Matchers {
         def apply[~>[_, _]](ex: Strong[~>])(psa: ~>[A, A]) = psa
       }
 
+      /*
+      From packages:
+        https://github.com/purescript/purescript-profunctor/blob/master/src/Data/Profunctor.purs
+        https://github.com/purescript-contrib/purescript-profunctor-lenses/blob/master/src/Data/Lens/Lens.purs
+  
+      dimap :: forall a b c d. (a -> b) -> (c -> d) -> p b c -> p a d
+  
+      dimap (\s -> ( (get s), \b -> set s b) (\(b, f) -> f b) (first pab)
+  
+      lens' :: forall s t a b. (s -> Tuple a (b -> t)) -> Lens s t a b
+      lens' to pab = dimap to (\(Tuple b f) -> f b) (first pab)
+  
+      -- | Create a `Lens` from a getter/setter pair.
+      lens :: forall s t a b. (s -> a) -> (s -> b -> t) -> Lens s t a b
+      lens get set = lens' \s -> Tuple (get s) \b -> set s b
+      */
+      def lens[S, A](getter: S => A, setter: (S, A) => S): xSLens[S, A] =
+        new Optic[Strong, S, S, A, A] {
+          def apply[~>[_, _]](ex: Strong[~>])(pab: ~>[A, A]) =
+            ex.dimap[S, S, (A => S, A), (A => S, A)](p => (((s: A) => setter(p, s)), getter(p)), t => t._1(t._2))(ex.first[A => S, A, A](pab))
+        }
+     
       class Get[S] {
 
         trait ~>[A, B] extends (A => S)
@@ -108,34 +130,12 @@ class FunProfun extends FlatSpec with Matchers {
     import gist.Lens._
 
     case class Age(age: Int)
-    case class Person(name: String, age:Age)
+    case class Person(name: String, age: Age)
 
     val p1 = Person("Dani", Age(40))
     val p2 = Person("Ana", Age(34))
 
-    /*
-    From packages:
-      https://github.com/purescript/purescript-profunctor/blob/master/src/Data/Profunctor.purs
-      https://github.com/purescript-contrib/purescript-profunctor-lenses/blob/master/src/Data/Lens/Lens.purs
-
-    dimap :: forall a b c d. (a -> b) -> (c -> d) -> p b c -> p a d
-
-    dimap (\s -> ( (get s), \b -> set s b) (\(b, f) -> f b) (first pab)
-
-    lens' :: forall s t a b. (s -> Tuple a (b -> t)) -> Lens s t a b
-    lens' to pab = dimap to (\(Tuple b f) -> f b) (first pab)
-
-    -- | Create a `Lens` from a getter/setter pair.
-    lens :: forall s t a b. (s -> a) -> (s -> b -> t) -> Lens s t a b
-    lens get set = lens' \s -> Tuple (get s) \b -> set s b
-    */
-    def pLens(getter: Person=>String, setter:(Person, String)=>Person): xSLens[Person, String] =
-      new Optic[Strong, Person, Person, String, String] {
-        def apply[~>[_, _]](ex: Strong[~>])(pab: ~>[String, String]) =
-          ex.dimap[Person, Person, (String=>Person, String), (String=>Person, String)](p => (((s:String) => setter(p, s)), getter(p)), t => t._1(t._2))(ex.first[String=>Person, String, String](pab))
-    }
-
-    val plen = pLens(_.name, { case (p: Person,s: String)=> p.copy(name=s) })
+    val plen = lens[Person, String](_.name, { case (p, s) => p.copy(name = s) })
 
     assert(plen.get(p1) === "Dani")
     assert(plen.get(p2) === "Ana")
@@ -149,7 +149,7 @@ class FunProfun extends FlatSpec with Matchers {
     import gist.Lens._
 
     case class Age(age: Int)
-    case class Person(name: String, age:Age)
+    case class Person(name: String, age: Age)
 
     val p1 = Person("Dani", Age(40))
     val p2 = Person("Ana", Age(34))
