@@ -255,13 +255,6 @@ class OAS extends FlatSpec with Matchers{
     }
   }
 
-  // TODO: explore using a Capture context typeclass to capture context effects
-  import simulacrum.typeclass
-
-  @simulacrum.typeclass trait Capture[M[_]] {
-    def capture[A](a: => A) : M[A]
-  }
-
   "Simple Effect with Monix tasks" should "work" in {
     import IOTaskAction._
     import monix.eval.Task
