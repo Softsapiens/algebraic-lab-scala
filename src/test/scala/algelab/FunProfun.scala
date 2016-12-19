@@ -7,7 +7,7 @@ import org.scalatest.{FlatSpec, Matchers}
   */
 class FunProfun extends FlatSpec with Matchers {
 
-  object gist {
+  object optics {
 
     // Adapted from: https://gist.github.com/tel/ccfb747f93b748a9a6ec3cc957886ac3
     import scala.language.higherKinds
@@ -126,8 +126,8 @@ class FunProfun extends FlatSpec with Matchers {
   }
 
   "Testing hand-made Lens[Person]" should "work" in {
-    import gist._
-    import gist.Lens._
+    import optics._
+    import optics.Lens._
 
     case class Age(age: Int)
     case class Person(name: String, age: Age)
@@ -139,14 +139,13 @@ class FunProfun extends FlatSpec with Matchers {
 
     assert(plen.get(p1) === "Dani")
     assert(plen.get(p2) === "Ana")
-
     assert(plen.put(p1, "Ana") === Person("Ana", Age(40)))
   }
 
 
   "Testing hand-made Lens.id[Person]" should "work" in {
-    import gist._
-    import gist.Lens._
+    import optics._
+    import optics.Lens._
 
     case class Age(age: Int)
     case class Person(name: String, age: Age)
@@ -156,10 +155,7 @@ class FunProfun extends FlatSpec with Matchers {
 
     val iLens = Lens.id[Person]
 
-    println(p1)
     assert(iLens.get(p1) === p1)
-
     assert(iLens.put(p1, p2) === p2)
-    println(iLens.put(p1, p2))
   }
 }
