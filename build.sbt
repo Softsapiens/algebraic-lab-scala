@@ -13,7 +13,14 @@ libraryDependencies ++= Seq(
   , "org.scalaz" %% "scalaz-core" % "7.3.0-M7"
   , "org.scalatest" %% "scalatest" % "3.0.1" % Test
   , "com.lihaoyi" %% "sourcecode" % "0.1.3"
- )
+  , "com.lihaoyi" % "ammonite" % "COMMIT-3119490" % "test" cross CrossVersion.full
+  , "io.monix" %% "monix" % "2.1.1"
+  , "io.monix" % "monix-types_2.12" % "2.1.1"
+  , "io.monix" % "monix-eval_2.12" % "2.1.1"
+  , "io.monix" % "monix-cats_2.12" % "2.1.1"
+  , "io.monix" %% "monix-scalaz-72" % "2.1.1"
+  , "com.github.mpilquist" %% "simulacrum" % "0.10.0"
+)
 
 scalacOptions ++= Seq(
   "-unchecked",
@@ -31,3 +38,4 @@ initialCommands in console := """
   |import algelab._
   """.stripMargin
 
+// initialCommands in (Test, console) := """ammonite.Main().run()"""
