@@ -94,7 +94,7 @@ class FunProfun extends FlatSpec with Matchers {
         }
 
 
-        val isStrong: Strong[~>] = new Strong[~>] {
+        val isStrong = new Strong[~>] {
 
           def dimap[X, Y, A, B](f: X => A, g: B => Y)(p: A ~> B): X ~> Y =
             p compose f
@@ -111,7 +111,7 @@ class FunProfun extends FlatSpec with Matchers {
       object Over {
         type ~>[A, B] = A => B
 
-        val isStrong: Strong[~>] = new Strong[~>] {
+        val isStrong = new Strong[~>] {
           def dimap[X, Y, A, B](f: X => A, g: B => Y)(p: A ~> B): X ~> Y =
             f andThen p andThen g
 
@@ -128,7 +128,6 @@ class FunProfun extends FlatSpec with Matchers {
       implicit def ofX[S, T, A, B](x: xLens[S, T, A, B]): Lens[S, T, A, B] =
         new Lens[S, T, A, B] {
           val G = new Get[A]
-          type ~>[X, Y] = G.~>[X, Y]
           val getter = x.apply(G.isStrong)(_)
           val overer = x.apply(Over.isStrong)(_)
 
