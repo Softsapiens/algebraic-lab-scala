@@ -40,22 +40,22 @@ class FunProfun extends FlatSpec with Matchers {
     type xLens[S, T, A, B] = Optic[Strong, S, T, A, B]
     type xSLens[S, A] = xLens[S, S, A, A]
 
-    type xPrism[S, T, A, B] = Optic[Choice, S, T, S, B]
+    type xPrism[S, T, A, B] = Optic[Choice, S, T, A, B]
     type xSPrism[S, A] = xPrism[S, S, A, A]
 
     /*
     prism :: forall s t a b. (b -> t) -> (s -> Either t a) -> Prism s t a b
     prism to fro pab = dimap fro (either id id) (right (rmap to pab))
 
+    right :: forall f g a. g a -> Coproduct f g a
+
     prism' :: forall s a. (a -> s) -> (s -> Maybe a) -> Prism' s a
     prism' to fro = prism to (\s -> maybe (Left s) Right (fro s))
 
-
-
     object Prism {
-      def prism[S, T, A, B](getter: B => T, setter: S => Either[T, A]): xPrism[S, T, A, B] = new Optic[Choice, S, T, A, B] {
+      def prism[S, T, A, B](to: B => T, fro: S => Either[T, A]): xPrism[S, T, A, B] = new Optic[Choice, S, T, A, B] {
         def apply[~>[_, _]](ex: Choice[~>])(pab: A ~> B): S ~> T =
-          ex.dimap[S, T, S => Either[T, A], _](setter, getter(p)), t => t._1(t._2))(ex.[A => S, A, A](pab))
+          ex.dimap[S, T, Either[T, A], Either[T, T]](fro, _.fold(identity, identity))(Right[~>[A, T], ~>[A, T]](ex.rmap[T, A, B](to)(pab)))
       }
     }*/
 
@@ -80,31 +80,27 @@ class FunProfun extends FlatSpec with Matchers {
       def lens[S, T, A, B](getter: S => A, setter: (S, B) => T): xLens[S, T, A, B] =
         new Optic[Strong, S, T, A, B] {
           def apply[P[_, _]](ex: Strong[P])(pab: P[A, B]): P[S, T] =
-            ex.dimap[S, T, (A, B => T), (B, B => T)](p => (getter(p), (s => setter(p, s))), t => t._2(t._1))(ex.first[B => T, A, B](pab))
+            ex.dimap[S, T, (A, B => T), (B, B => T)](s => (getter(s), b => setter(s, b)), {case (b, f) => f(b)})(ex.first[B => T, A, B](pab))
         }
      
       class Get[S] {
-
         trait ~>[A, B] extends (A => S)
 
         object ~> {
-          implicit def ofFunction[A, B](f: A => S): A ~> B = new ~>[A, B] {
+          def ofFunction[A, B](f: A => S): A ~> B = new ~>[A, B] {
             def apply(v: A) = f(v)
           }
         }
 
-
         val isStrong = new Strong[~>] {
-
           def dimap[X, Y, A, B](f: X => A, g: B => Y)(p: A ~> B): X ~> Y =
-            p compose f
+            ~>.ofFunction(p compose f)
 
           def first[X, A, B](p: A ~> B): (A, X) ~> (B, X) =
             ~>.ofFunction { case (a, x) => p(a) }
 
           def second[X, A, B](p: A ~> B): (X, A) ~> (X, B) =
             ~>.ofFunction { case (x, a) => p(a) }
-
         }
       }
 
@@ -128,8 +124,8 @@ class FunProfun extends FlatSpec with Matchers {
       implicit def ofX[S, T, A, B](x: xLens[S, T, A, B]): Lens[S, T, A, B] =
         new Lens[S, T, A, B] {
           val G = new Get[A]
-          val getter = x(G.isStrong)(_)
-          val overer = x(Over.isStrong)(_)
+          val getter = (pab: G.~>[A, B]) => x(G.isStrong)(pab): G.~>[S, T]  // equivalent x(G.isStrong)(_)
+          val overer = (pab: Over.~>[A, B]) => x(Over.isStrong)(pab): Over.~>[S, T] // equivalent x(Over.isStrong)(_)
 
           def get(s: S): A = getter(identity[A])(s)
 
