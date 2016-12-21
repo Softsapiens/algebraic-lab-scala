@@ -14,27 +14,27 @@ class FunProfun extends FlatSpec with Matchers {
     import scala.language.implicitConversions
 
     trait Optic[C[_[_, _]], S, T, A, B] {
-      def apply[~>[_, _]](ex: C[~>])(p: A ~> B): S ~> T
+      def apply[P[_, _]](ex: C[P])(p: P[A, B]): P[S, T]
     }
 
-    trait Profunctor[~>[_, _]] {
-      def dimap[X, Y, A, B](f: X => A, g: B => Y)(p: A ~> B): X ~> Y
+    trait Profunctor[P[_, _]] {
+      def dimap[X, Y, A, B](f: X => A, g: B => Y)(p: P[A, B]): P[X, Y]
 
-      def lmap[X, A, B](f: X => A)(p: A ~> B): X ~> B =
+      def lmap[X, A, B](f: X => A)(p: A P B): P[X, B] =
         dimap[X, B, A, B](f, identity)(p)
 
-      def rmap[Y, A, B](g: B => Y)(p: A ~> B): A ~> Y =
+      def rmap[Y, A, B](g: B => Y)(p: P[A, B]): P[A, Y] =
         dimap[A, Y, A, B](identity, g)(p)
     }
 
-    trait Strong[~>[_, _]] extends Profunctor[~>] {
-      def first[X, A, B](p: A ~> B): (A, X) ~> (B, X)
-      def second[X, A, B](p: A ~> B): (X, A) ~> (X, B)
+    trait Strong[P[_, _]] extends Profunctor[P] {
+      def first[X, A, B](p: P[A, B]): P[(A, X), (B, X)]
+      def second[X, A, B](p: P[A, B]): P[(X, A), (X, B)]
     }
 
-    trait Choice[~>[_, _]] extends Profunctor[~>] {
-      def right[X, A, B](p: A ~> B): Either[X, A] ~> Either[X, B]
-      def left[X, A, B](p: A ~> B): Either[A, X] ~> Either[B, X]
+    trait Choice[P[_, _]] extends Profunctor[P] {
+      def right[X, A, B](p: P[A, B]): P[Either[X, A], Either[X, B]]
+      def left[X, A, B](p: P[A, B]): P[Either[A, X], Either[B, X]]
     }
 
     type xLens[S, T, A, B] = Optic[Strong, S, T, A, B]
@@ -69,7 +69,7 @@ class FunProfun extends FlatSpec with Matchers {
 
     object Lens {
       def id[A]: xSLens[A, A] = new Optic[Strong, A, A, A, A] {
-        def apply[~>[_, _]](ex: Strong[~>])(psa: ~>[A, A]) = psa
+        def apply[P[_, _]](ex: Strong[P])(psa: P[A, A]) = psa
       }
 
       /*
@@ -79,7 +79,7 @@ class FunProfun extends FlatSpec with Matchers {
       */
       def lens[S, T, A, B](getter: S => A, setter: (S, B) => T): xLens[S, T, A, B] =
         new Optic[Strong, S, T, A, B] {
-          def apply[~>[_, _]](ex: Strong[~>])(pab: A ~> B) =
+          def apply[P[_, _]](ex: Strong[P])(pab: P[A, B]): P[S, T] =
             ex.dimap[S, T, (A, B => T), (B, B => T)](p => (getter(p), (s => setter(p, s))), t => t._2(t._1))(ex.first[B => T, A, B](pab))
         }
      
@@ -128,8 +128,8 @@ class FunProfun extends FlatSpec with Matchers {
       implicit def ofX[S, T, A, B](x: xLens[S, T, A, B]): Lens[S, T, A, B] =
         new Lens[S, T, A, B] {
           val G = new Get[A]
-          val getter = x.apply(G.isStrong)(_)
-          val overer = x.apply(Over.isStrong)(_)
+          val getter = x(G.isStrong)(_)
+          val overer = x(Over.isStrong)(_)
 
           def get(s: S): A = getter(identity[A])(s)
 
@@ -151,11 +151,22 @@ class FunProfun extends FlatSpec with Matchers {
     val p1 = Person("Dani", Age(40))
     val p2 = Person("Ana", Age(34))
 
-    val plen = lens[Person, Person, String, String](_.name, { case (p, s) => p.copy(name = s) })
+    val pName = lens[Person, Person, String, String](_.name, { case (p, v) => p.copy(name = v) })
+    val pAge = lens[Person, Person, Age, Age](_.age, { case (p, v) => p.copy(age = v) })
+    val aAge = lens[Age, Age, Int, Int](_.age, { case (a, v) => a.copy(age = v) })
 
-    assert(plen.get(p1) === "Dani")
-    assert(plen.get(p2) === "Ana")
-    assert(plen.put(p1, "Ana") === Person("Ana", Age(40)))
+    assert(pName.get(p1) === "Dani")
+    assert(pName.get(p2) === "Ana")
+    assert(aAge.get(Age(69)) === 69)
+
+    assert(pName.put(p1, "Ana") === Person("Ana", Age(40)))
+
+    val personAge = ((pAge.get(_)) andThen (aAge.get(_)))(_)
+    val setPerAge = (p: Person, a:Int) => pAge.put(p, aAge.put(pAge.get(p), a))
+
+    assert(personAge(p1) === 40)
+    assert(personAge(p2) === 34)
+    assert(personAge(setPerAge(p1, 69)) === 69)
   }
 
 
