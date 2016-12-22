@@ -135,6 +135,27 @@ class FunProfun extends FlatSpec with Matchers {
         }
     }
 
+    type \/[T, A] = Either[T, A]
+
+    trait Prism[S, A] {
+      def getOrModify[T](s: S): T \/ A
+      def reverseGet[B, T](b: B): T
+      def getOption(s: S): Option[A]
+    }
+
+    trait Applicative[S[_]] {
+    }
+
+    trait Traversal[S, A] {
+      def modifyF[F[_]: Applicative, B, T](f: A => F[B])(s: S): F[T]
+    }
+
+    trait Monoid[S] {
+    }
+
+    trait Fold[S, A] {
+      def foldMap[M: Monoid](f: A => M)(s: S): M
+    }
   }
 
   "Testing hand-made Lens[Person]" should "work" in {
