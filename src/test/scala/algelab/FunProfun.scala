@@ -40,25 +40,6 @@ class FunProfun extends FlatSpec with Matchers {
     type xLens[S, T, A, B] = Optic[Strong, S, T, A, B]
     type xSLens[S, A] = xLens[S, S, A, A]
 
-    type xPrism[S, T, A, B] = Optic[Choice, S, T, A, B]
-    type xSPrism[S, A] = xPrism[S, S, A, A]
-
-    /*
-    prism :: forall s t a b. (b -> t) -> (s -> Either t a) -> Prism s t a b
-    prism to fro pab = dimap fro (either id id) (right (rmap to pab))
-
-    right :: forall f g a. g a -> Coproduct f g a
-
-    prism' :: forall s a. (a -> s) -> (s -> Maybe a) -> Prism' s a
-    prism' to fro = prism to (\s -> maybe (Left s) Right (fro s))
-
-    object Prism {
-      def prism[S, T, A, B](to: B => T, fro: S => Either[T, A]): xPrism[S, T, A, B] = new Optic[Choice, S, T, A, B] {
-        def apply[~>[_, _]](ex: Choice[~>])(pab: A ~> B): S ~> T =
-          ex.dimap[S, T, Either[T, A], Either[T, T]](fro, _.fold(identity, identity))(Right[~>[A, T], ~>[A, T]](ex.rmap[T, A, B](to)(pab)))
-      }
-    }*/
-
     trait Lens[S, T, A, B] {
       def get(s: S): A
 
@@ -135,12 +116,36 @@ class FunProfun extends FlatSpec with Matchers {
         }
     }
 
+    type xPrism[S, T, A, B] = Optic[Choice, S, T, A, B]
+    type xSPrism[S, A] = xPrism[S, S, A, A]
+
     type \/[T, A] = Either[T, A]
 
     trait Prism[S, A] {
+      /*
+        preview :: Prism' s a -> s -> Maybe a
+        review :: Prism' s a -> a -> s
+       */
       def getOrModify[T](s: S): T \/ A
       def reverseGet[B, T](b: B): T
       def getOption(s: S): Option[A]
+    }
+
+    object Prism {
+      /*
+        prism :: forall s t a b. (b -> t) -> (s -> Either t a) -> Prism s t a b
+        prism to fro pab = dimap fro (either id id) (right (rmap to pab))
+
+        // https://pursuit.purescript.org/packages/purescript-either/2.0.0/docs/Data.Either#v:either
+        either :: forall a b c. (a -> c) -> (b -> c) -> Either a b -> c
+
+        // https://pursuit.purescript.org/packages/purescript-profunctor/2.0.0/docs/Data.Profunctor.Choice
+        right :: forall a b c. p b c -> p (Either a b) (Either a c)
+      */
+      def prism[S, T, A, B](to: B => T, fro: S => Either[T, A]): xPrism[S, T, A, B] = new Optic[Choice, S, T, A, B] {
+        def apply[P[_, _]](ex: Choice[P])(pab: P[A, B]): P[S, T] =
+          ex.dimap[S, T, Either[T, A], Either[T, T]](fro, _.fold(identity, identity))(ex.right[T, A, T](ex.rmap[T, A, B](to)(pab)):P[Either[T, A], Either[T, T]])
+      }
     }
 
     trait Applicative[S[_]] {
