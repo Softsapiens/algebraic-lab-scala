@@ -7,12 +7,7 @@ import org.scalatest.{FlatSpec, Matchers}
   */
 class FunProfun extends FlatSpec with Matchers {
 
-  object optics {
-
-    // Adapted from: https://gist.github.com/tel/ccfb747f93b748a9a6ec3cc957886ac3
-    import scala.language.higherKinds
-    import scala.language.implicitConversions
-
+  object cats {
     // https://github.com/purescript/purescript-prelude/blob/v2.1.0/src/Control/Semigroupoid.purs#L12-L13
     trait Semigroupoid[P[_, _]] {
       def >>>[A, B, C](f: P[A, B], g: P[B, C]): P[A, C]
@@ -23,12 +18,21 @@ class FunProfun extends FlatSpec with Matchers {
       def id[A]: P[A, A]
     }
 
-    implicit val arrCategory = new Category[Function1] {
-      def id[A]: (A => A) = x => x
+    object instances {
+      implicit val arrCategory = new Category[Function1] {
+        def id[A]: (A => A) = x => x
 
-      def >>>[A, B, C](f: A => B, g: B => C): A => C =
-        f andThen g
+        def >>>[A, B, C](f: A => B, g: B => C): A => C =
+          f andThen g
+      }
     }
+  }
+
+  object optics {
+
+    // Adapted from: https://gist.github.com/tel/ccfb747f93b748a9a6ec3cc957886ac3
+    import scala.language.higherKinds
+    import scala.language.implicitConversions
 
     trait Optic[C[_[_, _]], S, T, A, B] {
       def apply[P[_, _]](ex: C[P])(p: P[A, B]): P[S, T]
@@ -44,9 +48,11 @@ class FunProfun extends FlatSpec with Matchers {
         dimap[A, Y, A, B](identity, g)(p)
     }
 
-    implicit val ArrProfunctor = new Profunctor[Function1] {
-      def dimap[X, Y, A, B](f: X => A, g: B => Y)(p: A => B): (X => Y) =
-        g.compose(p.compose(f))
+    object instances {
+      implicit val ArrProfunctor = new Profunctor[Function1] {
+        def dimap[X, Y, A, B](f: X => A, g: B => Y)(p: A => B): (X => Y) =
+          g.compose(p.compose(f))
+      }
     }
 
     trait Strong[P[_, _]] extends Profunctor[P] {
@@ -182,7 +188,8 @@ class FunProfun extends FlatSpec with Matchers {
   }
 
   "Testing implicit Function1 Category instance" should "work" in {
-    import optics._
+    import cats._
+    import cats.instances._
 
     val f: (Int => String) = _.toString()
     val g: (String => String) = _ + "+1"
@@ -196,6 +203,7 @@ class FunProfun extends FlatSpec with Matchers {
 
   "Testing implicit Function1 Profunctor instance" should "work" in {
     import optics._
+    import optics.instances._
 
     val f: (String => Int) = _.toInt
     val p: (Int => Int) = _+1
