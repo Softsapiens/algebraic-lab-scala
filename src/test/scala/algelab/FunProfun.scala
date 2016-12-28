@@ -13,6 +13,23 @@ class FunProfun extends FlatSpec with Matchers {
     import scala.language.higherKinds
     import scala.language.implicitConversions
 
+    // https://github.com/purescript/purescript-prelude/blob/v2.1.0/src/Control/Semigroupoid.purs#L12-L13
+    trait Semigroupoid[P[_, _]] {
+      def >>>[A, B, C](f: P[A, B], g: P[B, C]): P[A, C]
+    }
+
+    // https://github.com/purescript/purescript-prelude/blob/v2.1.0/src/Control/Category.purs#L16-L17
+    trait Category[P[_, _]] extends Semigroupoid[P] {
+      def id[A]: P[A, A]
+    }
+
+    implicit val arrCategory = new Category[Function1] {
+      def id[A]: (A => A) = x => x
+
+      def >>>[A, B, C](f: A => B, g: B => C): A => C =
+        f andThen g
+    }
+
     trait Optic[C[_[_, _]], S, T, A, B] {
       def apply[P[_, _]](ex: C[P])(p: P[A, B]): P[S, T]
     }
@@ -25,6 +42,11 @@ class FunProfun extends FlatSpec with Matchers {
 
       def rmap[Y, A, B](g: B => Y)(p: P[A, B]): P[A, Y] =
         dimap[A, Y, A, B](identity, g)(p)
+    }
+
+    implicit val ArrProfunctor = new Profunctor[Function1] {
+      def dimap[X, Y, A, B](f: X => A, g: B => Y)(p: A => B): (X => Y) =
+        g.compose(p.compose(f))
     }
 
     trait Strong[P[_, _]] extends Profunctor[P] {
@@ -42,9 +64,7 @@ class FunProfun extends FlatSpec with Matchers {
 
     trait Lens[S, T, A, B] {
       def get(s: S): A
-
       def put(s: S, b: B): T
-
       def over(f: A => B)(s: S): T
     }
 
@@ -122,12 +142,10 @@ class FunProfun extends FlatSpec with Matchers {
     type \/[T, A] = Either[T, A]
 
     trait Prism[S, A] {
-      /*
-        preview :: Prism' s a -> s -> Maybe a
-        review :: Prism' s a -> a -> s
-       */
       def getOrModify[T](s: S): T \/ A
+      // review :: Prism' s a -> a -> s
       def reverseGet[B, T](b: B): T
+      // preview :: Prism' s a -> s -> Maybe a
       def getOption(s: S): Option[A]
     }
 
@@ -161,6 +179,33 @@ class FunProfun extends FlatSpec with Matchers {
     trait Fold[S, A] {
       def foldMap[M: Monoid](f: A => M)(s: S): M
     }
+  }
+
+  "Testing implicit Function1 Category instance" should "work" in {
+    import optics._
+
+    val f: (Int => String) = _.toString()
+    val g: (String => String) = _ + "+1"
+
+    val _arrCat = implicitly[Category[Function1]]
+
+    val z = _arrCat.>>> (f, g)
+
+    assert(z(1) === "1+1")
+  }
+
+  "Testing implicit Function1 Profunctor instance" should "work" in {
+    import optics._
+
+    val f: (String => Int) = _.toInt
+    val p: (Int => Int) = _+1
+    val g: (Int => String) = _.toString
+
+    val _arrPro = implicitly[Profunctor[Function1]]
+
+    val z = _arrPro.dimap(f, g)(p)
+
+    assert(z("1") === "2")
   }
 
   "Testing hand-made Lens[Person]" should "work" in {
