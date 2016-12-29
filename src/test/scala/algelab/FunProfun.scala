@@ -82,7 +82,7 @@ class FunProfun extends FlatSpec with Matchers {
 
         def put(s: S, d: D): T = self.put(s, l2.put(self.get(s), d))
 
-        def over(f: C => D)(s: S): T = ???
+        def over(f: C => D)(s: S): T = self.put(s, l2.over(f)(self.get(s)))
       }
     }
 
@@ -301,5 +301,9 @@ class FunProfun extends FlatSpec with Matchers {
     val p11 = pYears.put(p1, 41)
 
     assert(pYears.get(p11) === 41)
+
+    val p12 = pYears.over(_+2)(p1)
+
+    assert(pYears.get(p12) == 42)
   }
 }
