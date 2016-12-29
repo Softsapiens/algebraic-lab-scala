@@ -19,11 +19,15 @@ class FunProfun extends FlatSpec with Matchers {
     }
 
     object instances {
-      implicit val arrCategory = new Category[Function1] {
-        def id[A]: (A => A) = x => x
-
+      implicit val arrSemigroupoid = new Semigroupoid[Function1] {
         def >>>[A, B, C](f: A => B, g: B => C): A => C =
           f andThen g
+      }
+
+      implicit val arrCategory = new Category[Function1] {
+        def id[A]: (A => A) = x => x
+        def >>>[A, B, C](f: A => B, g: B => C): A => C =
+          implicitly[Semigroupoid[Function1]].>>>(f, g)
       }
     }
   }
@@ -68,13 +72,29 @@ class FunProfun extends FlatSpec with Matchers {
     type xLens[S, T, A, B] = Optic[Strong, S, T, A, B]
     type xSLens[S, A] = xLens[S, S, A, A]
 
-    trait Lens[S, T, A, B] {
+    trait Lens[S, T, A, B] { self =>
       def get(s: S): A
       def put(s: S, b: B): T
       def over(f: A => B)(s: S): T
+
+      def compose[C, D](l2: Lens[A, B, C, D]): Lens[S, T, C, D] = new Lens[S, T, C, D] {
+        def get(s: S): C = l2.get(self.get(s))
+
+        def put(s: S, d: D): T = self.put(s, l2.put(self.get(s), d))
+
+        def over(f: C => D)(s: S): T = ???
+      }
     }
 
     object Lens {
+      object instances {
+        import cats.Semigroupoid
+
+        implicit val lensSemigroupoid = new Semigroupoid[xSLens] {
+          override def >>>[A, B, C](f: xSLens[A, B], g: xSLens[B, C]) = ???
+        }
+      }
+
       def id[A]: xSLens[A, A] = new Optic[Strong, A, A, A, A] {
         def apply[P[_, _]](ex: Strong[P])(psa: P[A, A]) = psa
       }
@@ -259,5 +279,27 @@ class FunProfun extends FlatSpec with Matchers {
 
     assert(iLens.get(p1) === p1)
     assert(iLens.put(p1, p2) === p2)
+  }
+
+  "Testing Lens composition" should "work" in {
+    import optics._
+    import optics.Lens._
+
+    case class Age(years: Int)
+    case class Person(name: String, age: Age)
+
+    val p1 = Person("Dani", Age(40))
+    val p2 = Person("Ana", Age(34))
+
+    val pAge = lens[Person, Person, Age, Age](_.age, { case (p, v) => p.copy(age = v) })
+    val aYears = lens[Age, Age, Int, Int](_.years, { case (a, v) => a.copy(years = v) })
+
+    val pYears = pAge compose aYears
+
+    assert(pYears.get(p1) === 40)
+
+    val p11 = pYears.put(p1, 41)
+
+    assert(pYears.get(p11) === 41)
   }
 }
