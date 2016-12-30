@@ -39,6 +39,7 @@ class FunProfun extends FlatSpec with Matchers {
     import scala.language.implicitConversions
 
     trait Optic[C[_[_, _]], S, T, A, B] {
+      // P[A, B] => P[S, T]
       def apply[P[_, _]](ex: C[P])(p: P[A, B]): P[S, T]
     }
 
@@ -56,6 +57,18 @@ class FunProfun extends FlatSpec with Matchers {
       implicit val ArrProfunctor = new Profunctor[Function1] {
         def dimap[X, Y, A, B](f: X => A, g: B => Y)(p: A => B): (X => Y) =
           g.compose(p.compose(f))
+      }
+
+      implicit val ArrChoice = new Choice[Function1] {
+        override def dimap[X, Y, A, B](f: (X) => A, g: (B) => Y)(p: (A) => B) = {
+          val _arrPro = implicitly[Profunctor[Function1]]
+          _arrPro.dimap(f, g)(p)
+        }
+        def right[X, A, B](p: A => B): Either[X, A] => Either[X, B] = _.map(p)
+        def left[X, A, B](p: A => B): Either[A, X] => Either[B, X] = {
+          case Left(a) => Left(p(a))
+          case Right(c) => Right(c)
+        }
       }
     }
 
@@ -190,6 +203,25 @@ class FunProfun extends FlatSpec with Matchers {
         def apply[P[_, _]](ex: Choice[P])(pab: P[A, B]): P[S, T] =
           ex.dimap[S, T, Either[T, A], Either[T, T]](fro, _.fold(identity, identity))(ex.right[T, A, T](ex.rmap[T, A, B](to)(pab)):P[Either[T, A], Either[T, T]])
       }
+
+      object Either {
+        // https://github.com/purescript-contrib/purescript-profunctor-lenses/blob/master/src/Data/Lens/Prism/Either.purs
+
+        // left :: forall a b c. p a b -> p (Either a c) (Either b c)
+        def _Left[A, B, C]: xPrism[Either[A, C], Either[B, C], A, B] = new Optic[Choice, Either[A, C], Either[B, C], A, B] {
+          def apply[P[_, _]](ex: Choice[P])(pab: P[A, B]): P[Either[A, C], Either[B, C]] = ex.left[C, A, B](pab)
+        }
+        // _Right :: forall a b c. Prism (Either c a) (Either c b) a b
+        def _Right[A, B, C]: xPrism[Either[C, A], Either[C, B], A, B] = new Optic[Choice, Either[C, A], Either[C, B], A, B] {
+          def apply[P[_, _]](ex: Choice[P])(pab: P[A, B]): P[Either[C, A], Either[C, B]] = ex.right[C, A, B](pab)
+        }
+      }
+
+      object Maybe {
+        // https://github.com/purescript-contrib/purescript-profunctor-lenses/blob/master/src/Data/Lens/Prism/Maybe.purs
+
+        // TODO
+      }
     }
 
     trait Applicative[S[_]] {
@@ -205,6 +237,22 @@ class FunProfun extends FlatSpec with Matchers {
     trait Fold[S, A] {
       def foldMap[M: Monoid](f: A => M)(s: S): M
     }
+  }
+
+  "Testing Prisms" should "work" in {
+    import optics._
+    import optics.Prism._
+    import optics.instances._
+
+    val _l: Either[String, Int] = Left("Hi, I'm left.")
+    val _r = Right[String, Int](69)
+
+    val _arrChoice = implicitly[Choice[Function1]]
+
+    val __l = Either._Left[String, String, Int](_arrChoice)(identity)
+
+    println(__l(_l))
+    println(__l(_r))
   }
 
   "Testing implicit Function1 Category instance" should "work" in {
