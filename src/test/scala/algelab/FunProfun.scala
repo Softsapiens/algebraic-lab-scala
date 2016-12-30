@@ -33,6 +33,8 @@ class FunProfun extends FlatSpec with Matchers {
   }
 
   object optics {
+    // http://blog.functorial.com/posts/2015-11-20-Thermite.html
+    // Intuitively, a lens represents a pair of a getter and a setter for a property of one type inside another, larger type.
 
     // Adapted from: https://gist.github.com/tel/ccfb747f93b748a9a6ec3cc957886ac3
     import scala.language.higherKinds
@@ -249,10 +251,12 @@ class FunProfun extends FlatSpec with Matchers {
 
     val _arrChoice = implicitly[Choice[Function1]]
 
-    val __l = Either._Left[String, String, Int](_arrChoice)(identity)
+    val _pEitherStrInt = Prism.prism[Either[String, Int], Option[String], String, String](Some(_), {
+      case Left(a) => Right(a)
+      case _ => Left(None) })(_arrChoice)(identity)
 
-    println(__l(_l))
-    println(__l(_r))
+    assert(_pEitherStrInt(Left("Hola")) === Some("Hola"))
+    assert(_pEitherStrInt(Right(69)) === None)
   }
 
   "Testing implicit Function1 Category instance" should "work" in {
