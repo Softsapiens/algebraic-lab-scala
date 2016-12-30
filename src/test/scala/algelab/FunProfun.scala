@@ -40,9 +40,9 @@ class FunProfun extends FlatSpec with Matchers {
     import scala.language.higherKinds
     import scala.language.implicitConversions
 
-    trait Optic[C[_[_, _]], S, T, A, B] {
+    trait Optic[O[_[_, _]], S, T, A, B] { self =>
       // P[A, B] => P[S, T]
-      def apply[P[_, _]](ex: C[P])(p: P[A, B]): P[S, T]
+      def apply[P[_, _]](ex: O[P])(p: P[A, B]): P[S, T]
     }
 
     trait Profunctor[P[_, _]] {
@@ -241,13 +241,33 @@ class FunProfun extends FlatSpec with Matchers {
     }
   }
 
+  "Testing Prism composition" should "work" in {
+    import optics._
+    import optics.instances._
+    import cats._
+    import cats.instances._
+
+    val _arrChoice = implicitly[Choice[Function1]]
+    val _arrSemigroupoid = implicitly[Semigroupoid[Function1]]
+
+    val _p1 = Prism.prism[Either[String, Int], Option[String], String, String](Some(_), {
+      case Left(a) => Right(a + "1")
+      case _ => Left(None) })(_arrChoice)(identity)
+
+    val _p2 = Prism.prism[Option[String], String, String, String](identity, {
+      case Some(a) => Right(a + "2")
+      case _ => Left("") })(_arrChoice)(identity)
+
+    assert(_p1(Left("Hola")) === Some("Hola1"))
+
+    val _p12 = _arrSemigroupoid.>>>(_p1, _p2)
+
+    assert(_p12(Left("Hola")) === "Hola12")
+  }
+
   "Testing Prisms" should "work" in {
     import optics._
-    import optics.Prism._
     import optics.instances._
-
-    val _l: Either[String, Int] = Left("Hi, I'm left.")
-    val _r = Right[String, Int](69)
 
     val _arrChoice = implicitly[Choice[Function1]]
 
