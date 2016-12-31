@@ -169,7 +169,7 @@ class FunProfun extends FlatSpec with Matchers {
     val pYears = _arrSemiG.>>>(aYears, pAge)
 
     assert(pYears(identity)(p1) === 40)
-    assert(pYears(_+1)(p1) === 40)
+    assert(pYears(_+1)(p1) === 41)
   }
 
 
