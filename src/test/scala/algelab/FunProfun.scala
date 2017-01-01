@@ -105,7 +105,10 @@ class FunProfun extends FlatSpec with Matchers {
         }
     }
 
+    trait Forget[R, A, B] extends (A => R)
+    type Fold[R, S, T, A, B] = Optic[Lambda[F[A, B]=>Forget[R, A, B]], S, T, A, B]
 
+    type Getter[S, T, A, B] = Fold[A, S, T, A, B]
 
     type xPrism[S, T, A, B] = Optic[Choice, S, T, A, B]
 
