@@ -7,14 +7,42 @@ import org.scalatest.{FlatSpec, Matchers}
   */
 class FunProfun extends FlatSpec with Matchers {
 
+  object cats {
+    // https://github.com/purescript/purescript-prelude/blob/v2.1.0/src/Control/Semigroupoid.purs#L12-L13
+    trait Semigroupoid[P[_, _]] {
+      def >>>[A, B, C](f: P[A, B], g: P[B, C]): P[A, C]
+    }
+
+    // https://github.com/purescript/purescript-prelude/blob/v2.1.0/src/Control/Category.purs#L16-L17
+    trait Category[P[_, _]] extends Semigroupoid[P] {
+      def id[A]: P[A, A]
+    }
+
+    object instances {
+      implicit val arrSemigroupoid = new Semigroupoid[Function1] {
+        def >>>[A, B, C](f: A => B, g: B => C): A => C =
+          f andThen g
+      }
+
+      implicit val arrCategory = new Category[Function1] {
+        def id[A]: (A => A) = x => x
+        def >>>[A, B, C](f: A => B, g: B => C): A => C =
+          implicitly[Semigroupoid[Function1]].>>>(f, g)
+      }
+    }
+  }
+
   object optics {
+    // http://blog.functorial.com/posts/2015-11-20-Thermite.html
+    // Intuitively, a lens represents a pair of a getter and a setter for a property of one type inside another, larger type.
 
     // Adapted from: https://gist.github.com/tel/ccfb747f93b748a9a6ec3cc957886ac3
     import scala.language.higherKinds
     import scala.language.implicitConversions
 
-    trait Optic[C[_[_, _]], S, T, A, B] {
-      def apply[P[_, _]](ex: C[P])(p: P[A, B]): P[S, T]
+    trait Optic[O[_[_, _]], S, T, A, B] { self =>
+      // P[A, B] => P[S, T]
+      def apply[P[_, _]](ex: O[P])(p: P[A, B]): P[S, T]
     }
 
     trait Profunctor[P[_, _]] {
@@ -25,6 +53,25 @@ class FunProfun extends FlatSpec with Matchers {
 
       def rmap[Y, A, B](g: B => Y)(p: P[A, B]): P[A, Y] =
         dimap[A, Y, A, B](identity, g)(p)
+    }
+
+    object instances {
+      implicit val ArrProfunctor = new Profunctor[Function1] {
+        def dimap[X, Y, A, B](f: X => A, g: B => Y)(p: A => B): (X => Y) =
+          g.compose(p.compose(f))
+      }
+
+      implicit val ArrChoice = new Choice[Function1] {
+        override def dimap[X, Y, A, B](f: (X) => A, g: (B) => Y)(p: (A) => B) = {
+          val _arrPro = implicitly[Profunctor[Function1]]
+          _arrPro.dimap(f, g)(p)
+        }
+        def right[X, A, B](p: A => B): Either[X, A] => Either[X, B] = _.map(p)
+        def left[X, A, B](p: A => B): Either[A, X] => Either[B, X] = {
+          case Left(a) => Left(p(a))
+          case Right(c) => Right(c)
+        }
+      }
     }
 
     trait Strong[P[_, _]] extends Profunctor[P] {
@@ -40,34 +87,29 @@ class FunProfun extends FlatSpec with Matchers {
     type xLens[S, T, A, B] = Optic[Strong, S, T, A, B]
     type xSLens[S, A] = xLens[S, S, A, A]
 
-    type xPrism[S, T, A, B] = Optic[Choice, S, T, A, B]
-    type xSPrism[S, A] = xPrism[S, S, A, A]
-
-    /*
-    prism :: forall s t a b. (b -> t) -> (s -> Either t a) -> Prism s t a b
-    prism to fro pab = dimap fro (either id id) (right (rmap to pab))
-
-    right :: forall f g a. g a -> Coproduct f g a
-
-    prism' :: forall s a. (a -> s) -> (s -> Maybe a) -> Prism' s a
-    prism' to fro = prism to (\s -> maybe (Left s) Right (fro s))
-
-    object Prism {
-      def prism[S, T, A, B](to: B => T, fro: S => Either[T, A]): xPrism[S, T, A, B] = new Optic[Choice, S, T, A, B] {
-        def apply[~>[_, _]](ex: Choice[~>])(pab: A ~> B): S ~> T =
-          ex.dimap[S, T, Either[T, A], Either[T, T]](fro, _.fold(identity, identity))(Right[~>[A, T], ~>[A, T]](ex.rmap[T, A, B](to)(pab)))
-      }
-    }*/
-
-    trait Lens[S, T, A, B] {
+    trait Lens[S, T, A, B] { self =>
       def get(s: S): A
-
       def put(s: S, b: B): T
-
       def over(f: A => B)(s: S): T
+
+      def compose[C, D](l2: Lens[A, B, C, D]): Lens[S, T, C, D] = new Lens[S, T, C, D] {
+        def get(s: S): C = l2.get(self.get(s))
+
+        def put(s: S, d: D): T = self.put(s, l2.put(self.get(s), d))
+
+        def over(f: C => D)(s: S): T = self.put(s, l2.over(f)(self.get(s)))
+      }
     }
 
     object Lens {
+      object instances {
+        import cats.Semigroupoid
+
+        implicit val lensSemigroupoid = new Semigroupoid[xSLens] {
+          override def >>>[A, B, C](f: xSLens[A, B], g: xSLens[B, C]) = ???
+        }
+      }
+
       def id[A]: xSLens[A, A] = new Optic[Strong, A, A, A, A] {
         def apply[P[_, _]](ex: Strong[P])(psa: P[A, A]) = psa
       }
@@ -135,12 +177,53 @@ class FunProfun extends FlatSpec with Matchers {
         }
     }
 
+    type xPrism[S, T, A, B] = Optic[Choice, S, T, A, B]
+    type xSPrism[S, A] = xPrism[S, S, A, A]
+
     type \/[T, A] = Either[T, A]
 
     trait Prism[S, A] {
       def getOrModify[T](s: S): T \/ A
+      // review :: Prism' s a -> a -> s
       def reverseGet[B, T](b: B): T
+      // preview :: Prism' s a -> s -> Maybe a
       def getOption(s: S): Option[A]
+    }
+
+    object Prism {
+      /*
+        prism :: forall s t a b. (b -> t) -> (s -> Either t a) -> Prism s t a b
+        prism to fro pab = dimap fro (either id id) (right (rmap to pab))
+
+        // https://pursuit.purescript.org/packages/purescript-either/2.0.0/docs/Data.Either#v:either
+        either :: forall a b c. (a -> c) -> (b -> c) -> Either a b -> c
+
+        // https://pursuit.purescript.org/packages/purescript-profunctor/2.0.0/docs/Data.Profunctor.Choice
+        right :: forall a b c. p b c -> p (Either a b) (Either a c)
+      */
+      def prism[S, T, A, B](to: B => T, fro: S => Either[T, A]): xPrism[S, T, A, B] = new Optic[Choice, S, T, A, B] {
+        def apply[P[_, _]](ex: Choice[P])(pab: P[A, B]): P[S, T] =
+          ex.dimap[S, T, Either[T, A], Either[T, T]](fro, _.fold(identity, identity))(ex.right[T, A, T](ex.rmap[T, A, B](to)(pab)):P[Either[T, A], Either[T, T]])
+      }
+
+      object Either {
+        // https://github.com/purescript-contrib/purescript-profunctor-lenses/blob/master/src/Data/Lens/Prism/Either.purs
+
+        // left :: forall a b c. p a b -> p (Either a c) (Either b c)
+        def _Left[A, B, C]: xPrism[Either[A, C], Either[B, C], A, B] = new Optic[Choice, Either[A, C], Either[B, C], A, B] {
+          def apply[P[_, _]](ex: Choice[P])(pab: P[A, B]): P[Either[A, C], Either[B, C]] = ex.left[C, A, B](pab)
+        }
+        // _Right :: forall a b c. Prism (Either c a) (Either c b) a b
+        def _Right[A, B, C]: xPrism[Either[C, A], Either[C, B], A, B] = new Optic[Choice, Either[C, A], Either[C, B], A, B] {
+          def apply[P[_, _]](ex: Choice[P])(pab: P[A, B]): P[Either[C, A], Either[C, B]] = ex.right[C, A, B](pab)
+        }
+      }
+
+      object Maybe {
+        // https://github.com/purescript-contrib/purescript-profunctor-lenses/blob/master/src/Data/Lens/Prism/Maybe.purs
+
+        // TODO
+      }
     }
 
     trait Applicative[S[_]] {
@@ -156,6 +239,73 @@ class FunProfun extends FlatSpec with Matchers {
     trait Fold[S, A] {
       def foldMap[M: Monoid](f: A => M)(s: S): M
     }
+  }
+
+  "Testing Prism composition" should "work" in {
+    import optics._
+    import optics.instances._
+    import cats._
+    import cats.instances._
+
+    val _arrChoice = implicitly[Choice[Function1]]
+    val _arrSemigroupoid = implicitly[Semigroupoid[Function1]]
+
+    val _p1 = Prism.prism[Either[String, Int], Option[String], String, String](Some(_), {
+      case Left(a) => Right(a + "1")
+      case _ => Left(None) })(_arrChoice)(identity)
+
+    val _p2 = Prism.prism[Option[String], String, String, String](identity, {
+      case Some(a) => Right(a + "2")
+      case _ => Left("") })(_arrChoice)(identity)
+
+    assert(_p1(Left("Hola")) === Some("Hola1"))
+
+    val _p12 = _arrSemigroupoid.>>>(_p1, _p2)
+
+    assert(_p12(Left("Hola")) === "Hola12")
+  }
+
+  "Testing Prisms" should "work" in {
+    import optics._
+    import optics.instances._
+
+    val _arrChoice = implicitly[Choice[Function1]]
+
+    val _pEitherStrInt = Prism.prism[Either[String, Int], Option[String], String, String](Some(_), {
+      case Left(a) => Right(a)
+      case _ => Left(None) })(_arrChoice)(identity)
+
+    assert(_pEitherStrInt(Left("Hola")) === Some("Hola"))
+    assert(_pEitherStrInt(Right(69)) === None)
+  }
+
+  "Testing implicit Function1 Category instance" should "work" in {
+    import cats._
+    import cats.instances._
+
+    val f: (Int => String) = _.toString()
+    val g: (String => String) = _ + "+1"
+
+    val _arrCat = implicitly[Category[Function1]]
+
+    val z = _arrCat.>>> (f, g)
+
+    assert(z(1) === "1+1")
+  }
+
+  "Testing implicit Function1 Profunctor instance" should "work" in {
+    import optics._
+    import optics.instances._
+
+    val f: (String => Int) = _.toInt
+    val p: (Int => Int) = _+1
+    val g: (Int => String) = _.toString
+
+    val _arrPro = implicitly[Profunctor[Function1]]
+
+    val z = _arrPro.dimap(f, g)(p)
+
+    assert(z("1") === "2")
   }
 
   "Testing hand-made Lens[Person]" should "work" in {
@@ -201,5 +351,31 @@ class FunProfun extends FlatSpec with Matchers {
 
     assert(iLens.get(p1) === p1)
     assert(iLens.put(p1, p2) === p2)
+  }
+
+  "Testing Lens composition" should "work" in {
+    import optics._
+    import optics.Lens._
+
+    case class Age(years: Int)
+    case class Person(name: String, age: Age)
+
+    val p1 = Person("Dani", Age(40))
+    val p2 = Person("Ana", Age(34))
+
+    val pAge = lens[Person, Person, Age, Age](_.age, { case (p, v) => p.copy(age = v) })
+    val aYears = lens[Age, Age, Int, Int](_.years, { case (a, v) => a.copy(years = v) })
+
+    val pYears = pAge compose aYears
+
+    assert(pYears.get(p1) === 40)
+
+    val p11 = pYears.put(p1, 41)
+
+    assert(pYears.get(p11) === 41)
+
+    val p12 = pYears.over(_+2)(p1)
+
+    assert(pYears.get(p12) == 42)
   }
 }
