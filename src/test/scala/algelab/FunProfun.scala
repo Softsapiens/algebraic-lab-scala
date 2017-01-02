@@ -105,10 +105,52 @@ class FunProfun extends FlatSpec with Matchers {
         }
     }
 
-    trait Forget[R, A, B] extends (A => R)
-    type Fold[R, S, T, A, B] = Optic[Lambda[F[A, B]=>Forget[R, A, B]], S, T, A, B]
+    type Forget[R, A, B] = A => R
+    type Fold[R, S, T, A, B] = Optic[Lambda[F[_, _]=>Forget[R, _, _]], S, T, A, B]
 
     type Getter[S, T, A, B] = Fold[A, S, T, A, B]
+
+    object getter {
+      def getter[S, T, A, B](getter: S => A, setter: (S, B) => T): xLens[S, T, A, B] =
+        new Optic[Strong, S, T, A, B] {
+          def apply[P[_, _]](ex: Strong[P])(pab: P[A, B]): P[S, T] =
+            ex.dimap[S, T, (A, B => T), (B, B => T)](s => (getter(s), b => setter(s, b)), { case (b, f) => f(b) })(ex.first[B => T, A, B](pab))
+        }
+
+      def view[S, T, A, B](gttr: Getter[S, T, A, B], s: S): A =
+        ???
+    }
+
+    object forget {
+      object instances {
+        def forgetProfunctor[R] = new Profunctor[Forget[R, ?, ?]] {
+          override def dimap[X, Y, A, B](f: (X) => A, g: (B) => Y)(p: Forget[R, A, B]): Forget[R, X, Y] =
+            f andThen p
+        }
+
+        def forgetStrong[R] = new Strong[Forget[R, ?, ?]] {
+          def dimap[X, Y, A, B](f: (X) => A, g: (B) => Y)(p: Forget[R, A, B]) = forgetProfunctor.dimap(f, g)(p)
+
+          def first[X, A, B](p: Forget[R, A, B]) = { case (a, x) => p(a) }
+
+          def second[X, A, B](p: Forget[R, A, B]) = { case (x, a) => p(a) }
+        }
+        /*
+        val ArrChoice = new Choice[Function1] {
+          def dimap[X, Y, A, B](f: (X) => A, g: (B) => Y)(p: A => B) = ArrProfunctor.dimap(f, g)(p)
+
+          def right[X, A, B](p: A => B): Either[X, A] => Either[X, B] = _.map(p)
+
+          def left[X, A, B](p: A => B): Either[A, X] => Either[B, X] = {
+            case Left(a) => Left(p(a))
+            case Right(c) => Right(c)
+          }
+        } */
+      }
+    }
+
+
+    type Setter[S, T, A, B] = Optic[Lambda[F[_, _] => (_=>_)], S, T, A, B]
 
     type xPrism[S, T, A, B] = Optic[Choice, S, T, A, B]
 
@@ -169,8 +211,14 @@ class FunProfun extends FlatSpec with Matchers {
 
     val _arrSemiG = arrSemigroupoid
 
-    val pYears = _arrSemiG.>>>(aYears, pAge)
+    val pYears = aYears andThen pAge //_arrSemiG.>>>(aYears, pAge)
 
+
+    /*val aY: (Int=>Int) => Forget[Int, Age, Age] = lens[Age, Age, Int, Int](_.years,
+      { case (a, v) => a.copy(years = v) })(optics.forget.instances.forgetStrong[Int])(_)
+
+    assert(aY(identity)(Age(34)) === 35)
+*/
     assert(pYears(identity)(p1) === 40)
     assert(pYears(_+1)(p1) === 41)
   }
@@ -196,8 +244,10 @@ class FunProfun extends FlatSpec with Matchers {
     assert(_p1(Left("Hola")) === Some("Hola1"))
 
     val _p12 = _arrSemigroupoid.>>>(_p1, _p2)
+    val __p12 = _p1 andThen _p2
 
     assert(_p12(Left("Hola")) === "Hola12")
+    assert(__p12(Left("Hola")) === "Hola12")
   }
 
   "Testing Prisms" should "work" in {
