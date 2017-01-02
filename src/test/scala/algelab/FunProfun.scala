@@ -129,23 +129,31 @@ class FunProfun extends FlatSpec with Matchers {
         }
 
         def forgetStrong[R] = new Strong[Forget[R, ?, ?]] {
-          def dimap[X, Y, A, B](f: (X) => A, g: (B) => Y)(p: Forget[R, A, B]) = forgetProfunctor.dimap(f, g)(p)
+          def dimap[X, Y, A, B](f: X => A, g: B => Y)(p: Forget[R, A, B]) = forgetProfunctor.dimap(f, g)(p)
 
-          def first[X, A, B](p: Forget[R, A, B]) = { case (a, x) => p(a) }
+          def first[X, A, B](p: Forget[R, A, B]): Forget[R, (A, X), (B, X)] = { case (a, x) => p(a) }
 
-          def second[X, A, B](p: Forget[R, A, B]) = { case (x, a) => p(a) }
+          def second[X, A, B](p: Forget[R, A, B]): Forget[R, (X, A), (X, B)]  = { case (x, a) => p(a) }
         }
-        /*
-        val ArrChoice = new Choice[Function1] {
-          def dimap[X, Y, A, B](f: (X) => A, g: (B) => Y)(p: A => B) = ArrProfunctor.dimap(f, g)(p)
 
-          def right[X, A, B](p: A => B): Either[X, A] => Either[X, B] = _.map(p)
+        trait Monoid[A] {
+          def mempty: A
+          def mappend(a1: A, a2: A): A
+        }
 
-          def left[X, A, B](p: A => B): Either[A, X] => Either[B, X] = {
-            case Left(a) => Left(p(a))
-            case Right(c) => Right(c)
+        def forgetChoice[R: Monoid] = new Choice[Forget[R, ?, ?]] {
+          def dimap[X, Y, A, B](f: X => A, g: B => Y)(p: Forget[R, A, B]) = forgetProfunctor.dimap(f, g)(p)
+
+          def right[X, A, B](p: Forget[R, A, B]): Forget[R, Either[X, A], Either[X, B]] = {
+            case Right(a) => p(a)
+            case Left(c) => implicitly[Monoid[R]].mempty
           }
-        } */
+
+          def left[X, A, B](p: Forget[R, A, B]): Forget[R, Either[A, X], Either[B, X]] = {
+            case Left(a) => p(a)
+            case Right(c) => implicitly[Monoid[R]].mempty
+          }
+        }
       }
     }
 
