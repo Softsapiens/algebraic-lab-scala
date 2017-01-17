@@ -6,7 +6,11 @@ import monocle.{Lens, Optional, Prism}
 import org.scalatest.{FlatSpec, Matchers}
 
 import scala.util.Random
-
+/*
+  Based on  
+  - Awesome talk -> https://www.youtube.com/watch?v=6a5Ti0r8Q2s
+  - Scala initial approx by -> https://softwaremill.com/beautiful-folds-in-scala/
+*/
 class FunFoldingTests extends FlatSpec with Matchers {
 
   {
