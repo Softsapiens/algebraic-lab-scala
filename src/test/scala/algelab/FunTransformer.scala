@@ -111,14 +111,14 @@ class FunTransformerSpec extends FlatSpec with Matchers {
       def httpService: Option[HttpService]
     }
 
-    import cats._
-    import cats.data._
-    import cats.implicits._
-    import cats.instances.all._
-    import cats.syntax.all._
-    import cats.instances.all.catsStdInstancesForOption
+    import _root_.cats._
+    import _root_.cats.data._
+    import _root_.cats.implicits._
+    import _root_.cats.instances.all._
+    import _root_.cats.syntax.all._
+    import _root_.cats.instances.all.catsStdInstancesForOption
 
-    type ReaderTOption[A, B] = Kleisli[Option, A, B]
+    type ReaderTOption[A, B] = Kleisli[Option, A, B] // A => Option[B]
 
     object ReaderTOption {
       def ro[A, B](f: A => Option[B]): ReaderTOption[A, B] = Kleisli(f)
@@ -205,7 +205,10 @@ class FunTransformerSpec extends FlatSpec with Matchers {
       def httpService: Option[HttpService] = None
     }
 
-    val _res: Option[(Stack, String)] = stackManip.run(List("Hyman Roth")).run(dummyConfig)
-    _res shouldBe Some((List(), "Hyman Roth"))
+    stackManip.run(List("Hyman Roth")).run(dummyConfig) shouldBe Some((List(), "Hyman Roth"))
+
+    // Simplifyied MonadTransformer concept:
+    // TypeT[F[_], A] wraps F[Type[A]]
+    // For example, OptionT[List, Int] wraps List[Option[Int]]
   }
 }
