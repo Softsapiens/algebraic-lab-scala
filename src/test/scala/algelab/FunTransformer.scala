@@ -116,12 +116,37 @@ class FunTransformerSpec extends FlatSpec with Matchers {
     import cats.implicits._
     import cats.instances.all._
     import cats.syntax.all._
-
+    import cats.instances.all.catsStdInstancesForOption
 
     type ReaderTOption[A, B] = Kleisli[Option, A, B]
 
     object ReaderTOption {
       def ro[A, B](f: A => Option[B]): ReaderTOption[A, B] = Kleisli(f)
+    }
+
+    trait Users {
+      def getUser(id: Long): ReaderTOption[Config, User] =
+        ReaderTOption.ro {
+          case config => config.userRepo.get(id)
+        }
+      def findUser(name: String): ReaderTOption[Config, User] =
+        ReaderTOption.ro {
+          case config => config.userRepo.find(name)
+        }
+    }
+    trait Https {
+      def getHttp(uri: URI): ReaderTOption[Config, String] =
+        ReaderTOption.ro {
+          case config => config.httpService map {_.get(uri)}
+        }
+    }
+
+    trait Program extends Users with Https {
+      def userSearch(id: Long): ReaderTOption[Config, String] =
+        for {
+          u <- getUser(id)
+          r <- getHttp(new URI(s"http://www.google.com/?q=${u.name}"))
+        } yield r
     }
 
     type StateTReaderTOption[C, S, A] = StateT[ReaderTOption[C, ?], S, A]
@@ -180,6 +205,7 @@ class FunTransformerSpec extends FlatSpec with Matchers {
       def httpService: Option[HttpService] = None
     }
 
-    stackManip.run(List("Hyman Roth")).run(dummyConfig) shouldBe equal(Some((List(), "Hyman Roth")))
+    val _res: Option[(Stack, String)] = stackManip.run(List("Hyman Roth")).run(dummyConfig)
+    _res shouldBe Some((List(), "Hyman Roth"))
   }
 }
