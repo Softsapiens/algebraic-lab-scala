@@ -1,9 +1,6 @@
 package algelab
 
-import algelab.FunTransformer._
 import org.scalatest.{FlatSpec, Matchers}
-
-import scalaz.{Monad, Id}
 
 /**
   * Created by dani on 08/01/2017.
@@ -13,71 +10,202 @@ object FunTransformer {
   trait MyIO[F[_]] {
     def put[A](v: A): F[Unit]
 
-    def get(): F[String] // TODO: what if get is polymorphic¿?
+    def get(): F[String] // TODO: what about to make get polymorphic¿?
   }
-
-  import scalaz.Id
 
   type Id[A] = scalaz.Id.Id[A]
 
   trait Fu[F[_]] {
-    def fmap[A, B](fa: F[A])(f: A=>B): F[B]
+    def fmap[A, B](fa: F[A])(f: A => B): F[B]
   }
+
   trait Mo[F[_]] {
-    def bind[A, B](fa: F[A])(f: (A=>F[B])): F[B]
+    def bind[A, B](fa: F[A])(f: (A => F[B])): F[B]
   }
 }
 
 class FunTransformerSpec extends FlatSpec with Matchers {
 
-  import FunTransformer._
-
-  "MyIO must accept for-comprehentions" should "work with scalaz.Monad" in {
-      import scalaz.Id.Id, scalaz.syntax.monad._
-
-      val _mio = new MyIO[Id] {
-        override def get() = "hola"
-
-        override def put[A](v: A) = println(v)
-      }
-
-      def _program[F[_] : MyIO : Monad](): F[String] = {
-        for {
-          v <- implicitly[MyIO[F]].get()
-          _ <- implicitly[MyIO[F]].put(v)
-        } yield (v)
-      }
-
-      _program()(_mio, Monad[Id])
+  "scala for-comprehention flatMap" should "be ok" in {
+    class C[+A](val a:A) {
+      def flatMap[B](f:(A) => C[B]):C[B] = f(a)
+      def map[B](f:(A)=>B):B = f(a)
     }
 
-      "MyIO must accpet for-comprehentions" should "work with custom monad" in {
-        import scala.language.reflectiveCalls // TODO: find about its meaning...
+    val t: C[Int] = for {
+      k <- new C(3)
+      r <- new C(2)
+    } yield new C(r)
+  }
 
-        implicit val _mio = new MyIO[Id] {
-          self =>
-          override def get() = "hola"
+  "MyIO must accept for-comprehentions" should "work with scalaz.Monad" in {
+    import FunTransformer._
 
-          override def put[A](v: A) = println(v)
+    import scalaz.Monad
+    import scalaz.Id.Id, scalaz.syntax.monad._
+
+    val _mio = new MyIO[Id] {
+      override def get(): Id[String] = "hola"
+      override def put[A](v: A): Id[Unit] = println(v)
+    }
+
+    def _program[F[_]: MyIO : Monad](): F[String] =
+      for {
+        v <- implicitly[MyIO[F]].get()
+        _ <- implicitly[MyIO[F]].put(v)
+      } yield v
+
+    _program()(_mio, Monad[Id])
+  }
+
+  "MyIO must accept for-comprehentions" should "work with custom monad" in {
+    import FunTransformer._
+
+    import scalaz.Id.Id
+    import scala.language.reflectiveCalls
+
+    implicit val _mio = new MyIO[Id] {
+      override def get() = "hola"
+      override def put[A](v: A): Id[Unit] = println(v)
+    }
+
+    class MID[F[_], A](ia: Id[A]) extends Mo[Id] with Fu[Id] {
+      override def fmap[B, C](fa: Id[B])(f: (B) => C): Id[C] = f(fa)
+
+      def map[B](f: A => B): Id[B] = fmap(ia)(f)
+
+      override def bind[B, C](fb: Id[B])(fbc: (B) => Id[C]): Id[C] = fbc(fb)
+
+      def flatMap[B](fab: (A) => Id[B]): Id[B] = bind(ia)(fab)
+    }
+
+    implicit def mid[A](ia: Id[A]) = new MID(ia)
+
+    def _program[F[_]: MyIO](): F[String] = {
+      for {
+        v <- implicitly[MyIO[F]].get()
+        _ <- implicitly[MyIO[F]].put(v)
+      } yield v
+    }
+
+    mid(_mio.put("hola")).flatMap(identity(_))
+
+    _program[Id]()(_mio)
+  }
+
+  "herding cats — Monad transformers example" should "work" in {
+    case class User(id: Long, parentId: Long, name: String, email: String)
+
+    import java.net.URI
+
+    trait HttpService {
+      def get(uri: URI): String
+    }
+
+    trait UserRepo {
+      def get(id: Long): Option[User]
+      def find(name: String): Option[User]
+    }
+    trait Config {
+      def userRepo: UserRepo
+      def httpService: Option[HttpService]
+    }
+
+    import cats._
+    import cats.data._
+    import cats.implicits._
+    import cats.instances.all._
+    import cats.syntax.all._
+    import cats.instances.all.catsStdInstancesForOption
+
+    type ReaderTOption[A, B] = Kleisli[Option, A, B]
+
+    object ReaderTOption {
+      def ro[A, B](f: A => Option[B]): ReaderTOption[A, B] = Kleisli(f)
+    }
+
+    trait Users {
+      def getUser(id: Long): ReaderTOption[Config, User] =
+        ReaderTOption.ro {
+          case config => config.userRepo.get(id)
         }
-
-        implicit def mid[A](ia: Id[A]) = new Mo[Id] with Fu[Id] {
-          override def fmap[B, C](fa: Id[B])(f: (B) => C) = f(fa)
-
-          def map[B](f: A => B): Id[B] = fmap(ia)(f)
-
-          override def bind[B, C](fa: Id[B])(f: (B) => Id[C]): Id[C] = f(fa)
-
-          def flatMap[B](f: (A) => Id[B]): Id[B] = bind(ia)(f)
+      def findUser(name: String): ReaderTOption[Config, User] =
+        ReaderTOption.ro {
+          case config => config.userRepo.find(name)
         }
-
-        def _program[F[_] : MyIO](): F[String] = {
-          for {
-            v <- implicitly[MyIO[F]].get()
-            _ <- implicitly[MyIO[F]].put(v)
-          } yield (v)
+    }
+    trait Https {
+      def getHttp(uri: URI): ReaderTOption[Config, String] =
+        ReaderTOption.ro {
+          case config => config.httpService map {_.get(uri)}
         }
+    }
 
-        _program()
+    trait Program extends Users with Https {
+      def userSearch(id: Long): ReaderTOption[Config, String] =
+        for {
+          u <- getUser(id)
+          r <- getHttp(new URI(s"http://www.google.com/?q=${u.name}"))
+        } yield r
+    }
+
+    type StateTReaderTOption[C, S, A] = StateT[ReaderTOption[C, ?], S, A]
+
+    object StateTReaderTOption {
+      def state[C, S, A](f: S => (S, A)): StateTReaderTOption[C, S, A] =
+        StateT[ReaderTOption[C, ?], S, A] {
+          s: S => Monad[ReaderTOption[C, ?]].pure(f(s))
+        }
+      def get[C, S]: StateTReaderTOption[C, S, S] =
+        state { s => (s, s) }
+      def put[C, S](s: S): StateTReaderTOption[C, S, Unit] =
+        state { _ => (s, ()) }
+      def ro[C, S, A](f: C => Option[A]): StateTReaderTOption[C, S, A] =
+        StateT[ReaderTOption[C, ?], S, A] {
+          s: S =>
+            ReaderTOption.ro[C, (S, A)]{
+              c: C => f(c) map {(s, _)}
+            }
+        }
+    }
+
+    type Stack = List[String]
+
+    val pop: StateTReaderTOption[Config, Stack, String] =
+      for {
+        s <- StateTReaderTOption.get[Config, Stack]
+        (x :: xs) = s
+        _ <- StateTReaderTOption.put(xs)
+      } yield x
+
+    def push(x: String): StateTReaderTOption[Config, Stack, Unit] =
+      for {
+        xs <- StateTReaderTOption.get[Config, Stack]
+        r <- StateTReaderTOption.put(x :: xs)
+      } yield r
+
+    def stackManip: StateTReaderTOption[Config, Stack, String] =
+      for {
+        _ <- push("Fredo")
+        a <- pop
+        b <- pop
+      } yield(b)
+
+
+    val dummyConfig: Config = new Config {
+      val testUsers = List(User(0, 0, "Vito", "vito@example.com"),
+        User(1, 0, "Michael", "michael@example.com"),
+        User(2, 0, "Fredo", "fredo@example.com"))
+      def userRepo: UserRepo = new UserRepo {
+        def get(id: Long): Option[User] =
+          testUsers find { _.id === id }
+        def find(name: String): Option[User] =
+          testUsers find { _.name === name }
       }
+      def httpService: Option[HttpService] = None
+    }
+
+    val _res: Option[(Stack, String)] = stackManip.run(List("Hyman Roth")).run(dummyConfig)
+    _res shouldBe Some((List(), "Hyman Roth"))
+  }
 }
