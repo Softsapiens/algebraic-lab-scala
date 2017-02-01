@@ -13,6 +13,9 @@ object FunTransformer {
     def get(): F[String] // TODO: what about to make get polymorphic¿?
   }
 
+  object MyIO {
+  }
+
   type Id[A] = scalaz.Id.Id[A]
 
   trait Fu[F[_]] {
@@ -81,16 +84,17 @@ class FunTransformerSpec extends FlatSpec with Matchers {
 
     implicit def mid[A](ia: Id[A]) = new MID(ia)
 
-    def _program[F[_]: MyIO](): F[String] = {
+    def _program[F[_]: MyIO]: F[String] = {
+      def F = implicitly[MyIO[F]]
       for {
-        v <- implicitly[MyIO[F]].get()
-        _ <- implicitly[MyIO[F]].put(v)
+        v <- F.get()
+        _ <- F.put(v)
       } yield v
     }
 
     mid(_mio.put("hola")).flatMap(identity(_))
 
-    _program[Id]()(_mio)
+    _program[Id](_mio)
   }
 
   "herding cats — Monad transformers example" should "work" in {
@@ -210,5 +214,22 @@ class FunTransformerSpec extends FlatSpec with Matchers {
     // Simplifyied MonadTransformer concept:
     // TypeT[F[_], A] wraps F[Type[A]]
     // For example, OptionT[List, Int] wraps List[Option[Int]]
+  }
+
+  "Applicative composition" should "work" in {
+    import _root_.cats._
+    import _root_.cats.implicits._
+    import scala.concurrent.ExecutionContext.Implicits.global
+    import scala.concurrent.Future
+    import scala.util.Try
+    import scala.util.Success
+
+    val _appl1 = Applicative[Try] compose Applicative[Option]
+
+    _appl1.map2(Success(Some(1)), Success(Some(2))){_ + _} shouldBe Success(Some(3))
+
+    val _appl2 = Applicative[Future] compose Applicative[Option]
+
+    _appl2.map2(Future(Some(1)), Future(Some(2))){_ + _} map { _ shouldEqual Some(3) }
   }
 }
