@@ -249,4 +249,116 @@ class FunTransformerSpec extends FlatSpec with Matchers {
 
     _appl2.map2(Future(Some(1)), Future(Some(2))){_ + _} map { _ shouldEqual Some(3) }
   }
+
+  "Kleisli composition" should "work" in {
+    import _root_.cats._
+    import _root_.cats.implicits._
+    import scala.concurrent.ExecutionContext.Implicits.global
+    import scala.concurrent.Future
+    import scala.util.Try
+    import scala.util.Success
+
+    val _compo1 = Applicative[Try] compose Applicative[Option]
+  }
+
+  /*
+  Based on http://www.slideshare.net/TomaszKogut/bestiary-of-functional-programming-with-cats
+   */
+  "A simple pure RPC service as Kleisli structure" should "work" in {
+    import _root_.cats._
+    import _root_.cats.data._
+    import _root_.cats.implicits._
+    import scala.concurrent.ExecutionContext.Implicits.global
+    import scala.concurrent.Future
+
+    object http {
+      sealed class Method
+      final object Get extends Method
+      final object Post extends Method
+
+      type URI = String
+      sealed case class Request(method: Method, uri: URI)
+
+      sealed class HttpCode
+      final object Ok extends HttpCode
+      final object NotFound extends HttpCode
+
+      type Service[A,B] = Kleisli[Future, A, B]
+      type HttpService = Service[Request, Response] //Future[Either[A, B]] type DecodeResult[T] = EitherT[Future, DecodeFailure, T]
+    }
+
+    import http._
+
+    trait Message
+
+    case class Response(code: HttpCode) extends Message {
+      def body[A](implicit decoder: EntityDecoder[A]): DecodeResult[A] = decoder.decode(this)
+    }
+
+    // Decoding
+    trait EntityDecoder[T] { self =>
+      def decode(msg: Message): DecodeResult[T]
+      def map[T2](f: T => T2): EntityDecoder[T2] = new EntityDecoder[T2] {
+        override def decode(msg: Message): DecodeResult[T2] = self.decode(msg).map(f)
+      }
+    }
+
+    type DecodeFailure = List[String]
+    type DecodeResult[T] = EitherT[Future, DecodeFailure, T]
+
+    object EntitiyDecoder {
+      import Json._
+
+      implicit def stringInstance = new EntityDecoder[String] {
+        def decode(msg: Message): DecodeResult[String] = EitherT.pure[Future, DecodeFailure, String]("SomeString")
+      }
+
+      implicit def jsonInstance: EntityDecoder[Json] = stringInstance.map(_.toJson)
+    }
+
+    trait Json
+
+    object Json {
+      implicit def fromString(s: String): JsonOps = JsonOps(s)
+
+      case class JsonOps(s: String) {
+        def toJson = new Json {}
+      }
+    }
+
+    object Service {
+      def lift[A,B](f: A => Future[B]): Service[A,B] = Kleisli(f)
+    }
+
+    object HttpService {
+      def apply(f: PartialFunction[Request, Response]): HttpService = Service.lift(liftToAsync(f))
+      def liftToAsync[A,B](f: A => B): A => Future[B] = (a: A) => Future(f(a))
+    }
+
+    val httpService = HttpService {
+      case r1 @ Request(Get, "/") => Response(Ok)
+      case r2 @ Request(Post, "/") => Response(NotFound)
+    }
+
+    // Http.runService(httpService) // Server
+
+    import EntitiyDecoder._
+
+    val jsonResponseFromPipeline = httpService.map(_.body[Json])
+    val jsonFut: Future[DecodeResult[Json]] = jsonResponseFromPipeline(Request(Get,"/"))
+
+    class AHClient
+
+    class AHClientWrapper(realClient: AHClient) extends (Request => Future[Response]) {
+      def apply(req: Request): Future[Response] = ??? //call realClient and return response
+    }
+
+    val httpClient: HttpService = Kleisli(new AHClientWrapper(new AHClient))
+
+    // Client
+
+    httpService.map(_.body[Json]) // Kleisli[Future, Request, Json]
+
+  }
+
 }
