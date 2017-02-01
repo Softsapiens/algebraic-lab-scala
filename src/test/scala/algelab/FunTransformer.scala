@@ -216,6 +216,23 @@ class FunTransformerSpec extends FlatSpec with Matchers {
     // For example, OptionT[List, Int] wraps List[Option[Int]]
   }
 
+  "Functor composition" should "work" in {
+    import _root_.cats._
+    import _root_.cats.implicits._
+    import scala.concurrent.ExecutionContext.Implicits.global
+    import scala.concurrent.Future
+    import scala.util.Try
+    import scala.util.Success
+
+    val _compo1 = Functor[Try] compose Functor[Option]
+
+    _compo1.map(Success(Some(1))){_ + 1} shouldBe Success(Some(2))
+
+    val _compo2 = Functor[Future] compose Functor[Option]
+
+    _compo2.map(Future(Some(1))){_ + 1} map { _ shouldEqual Some(2) }
+  }
+
   "Applicative composition" should "work" in {
     import _root_.cats._
     import _root_.cats.implicits._
